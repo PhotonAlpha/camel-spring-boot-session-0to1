@@ -1,0 +1,320 @@
+### =========================================================================
+###  camel-session-0to1 · REST API 全量请求集
+### =========================================================================
+###  用法：
+###    1. 先启动应用：mvn spring-boot:run  或  java -jar target/*.jar
+###    2. 在 IntelliJ IDEA 中打开本文件，点击每个请求左侧的 ▶ 单独执行，
+###       或点击文件顶部的 ▶▶ 依次执行全部请求。
+###    3. 执行后对照应用控制台的中文日志观察每一步 EIP 的轨迹。
+###
+###  环境变量在 .idea/rest/http-client.env.json 中定义（local / docker）。
+###  未选择环境时默认走 {{host}} = http://localhost:8080。
+### =========================================================================
+
+@host = http://localhost:8080
+@base = {{host}}/api/v1/orders
+@json = application/json
+
+### basic positive
+### =========================================================================
+### API-1  基础链路
+### 标签：<rest> <post> <to> <route> <from> <process> <log>
+### 路由：api1-basic-order -> direct:api1-enrich -> api1-enrich-order
+### 预期：200，code=OK，handledBy=route:api1-basic-order
+### =========================================================================
+POST {{base}}/basic
+Content-Type: {{json}}
+
+{
+  "orderId": "A-1001",
+  "amount": 666,
+  "channel": "WEB"
+}
+
+> {%
+    client.test("API-1 返回 OK", function () {
+        client.assert(response.status === 200, "期望 200，实际 " + response.status);
+        client.assert(response.body.code === "OK");
+        client.assert(response.body.handledBy === "route:api1-basic-order");
+    });
+%}
+
+### basic negative
+### -------------------------------------------------------------------------
+### API-1  反例：缺少 orderId，OrderValidateProcessor 抛异常
+### 预期：500（未配置 onException，异常直接冒泡，可用来观察失败态日志）
+### -------------------------------------------------------------------------
+POST {{base}}/basic
+Content-Type: {{json}}
+
+{
+  "amount": 100
+}
+
+### dispatch amount > 10000
+### =========================================================================
+### API-2a  <choice> 命中 when#1（simple: amount > 10000）+ <filter> 放行
+### 标签：<choice> <when> <otherwise> <simple> <jsonpath> <filter>
+### 预期：lane=VIP，placed=true
+### =========================================================================
+POST {{base}}/dispatch
+Content-Type: {{json}}
+
+{
+  "orderId": "B-2001",
+  "amount": 20000,
+  "channel": "WEB"
+}
+
+> {%
+    client.test("命中 VIP 通道且已下单", function () {
+        client.assert(response.body.lane === "VIP");
+        client.assert(response.body.placed === true);
+    });
+%}
+
+### dispatch when APP
+### -------------------------------------------------------------------------
+### API-2b  <choice> 命中 when#2（jsonpath: $[?(@.channel == 'APP')]）
+### 预期：lane=APP_FAST，placed=true
+### -------------------------------------------------------------------------
+POST {{base}}/dispatch
+Content-Type: {{json}}
+
+{
+  "orderId": "B-2002",
+  "amount": 500,
+  "channel": "APP"
+}
+
+> {%
+    client.test("命中 APP 快线", function () {
+        client.assert(response.body.lane === "APP_FAST");
+    });
+%}
+
+### dispatch otherwise
+### -------------------------------------------------------------------------
+### API-2c  <choice> 走 <otherwise>，且 <filter> 未放行（amount < 100）
+### 关键：filter 拦截【不会终止路由】，收口 Processor 照常执行，依然返回 200
+### 预期：lane=STANDARD，placed=false，HTTP 仍是 200
+### -------------------------------------------------------------------------
+POST {{base}}/dispatch
+Content-Type: {{json}}
+
+{
+  "orderId": "B-2003",
+  "amount": 50,
+  "channel": "WEB"
+}
+
+> {%
+    client.test("filter 拦截但路由正常收口", function () {
+        client.assert(response.status === 200, "filter 不应终止路由");
+        client.assert(response.body.lane === "STANDARD");
+        client.assert(response.body.placed === false);
+    });
+%}
+
+### quote ProducerTemplate
+### =========================================================================
+### API-3  ProducerTemplate：远程 HTTP 调用 + 回调本地 direct 路由
+### 标签：<rest> <post> <to uri="bean:..."> <from>
+### 预期：rate=7.24（USD），fee 由 direct:api3-calc-fee 算出
+### =========================================================================
+POST {{base}}/quote
+Content-Type: {{json}}
+
+{
+  "orderId": "C-3001",
+  "amount": 2000,
+  "currency": "USD"
+}
+
+> {%
+    client.test("拿到远程汇率与本地计费", function () {
+        client.assert(response.body.rate === 7.24);
+        client.assert(response.body.remoteProvider === "mock-fx-service");
+        client.assert(response.body.fee !== undefined);
+    });
+%}
+
+### quote mock
+### -------------------------------------------------------------------------
+### API-3  换一种货币，观察远程 mock 服务返回不同汇率
+### -------------------------------------------------------------------------
+POST {{base}}/quote
+Content-Type: {{json}}
+
+{
+  "orderId": "C-3002",
+  "amount": 800,
+  "currency": "EUR"
+}
+
+### mock/remote/fx-rate
+### -------------------------------------------------------------------------
+### API-3  直接打被 ProducerTemplate 调用的"外部系统"（普通 Spring MVC Controller）
+### 它不属于 Camel 路由，用来证明 API-3 走的是真实 HTTP
+### -------------------------------------------------------------------------
+POST {{host}}/mock/remote/fx-rate
+Content-Type: {{json}}
+
+{
+  "currency": "JPY"
+}
+
+### check multicast
+### =========================================================================
+### API-4  <multicast> 三路并行 + aggregationStrategy 聚合
+### 标签：<multicast aggregationStrategy="..." parallelProcessing="true">
+### 预期：checks 三条，totalScore=270（amount<=50000）
+### 观察：控制台三个 "#N - Multicast" 线程交错打分
+### =========================================================================
+POST {{base}}/check
+Content-Type: {{json}}
+
+{
+  "orderId": "D-4001",
+  "amount": 3000
+}
+
+> {%
+    client.test("三路结果被聚合", function () {
+        client.assert(response.body.checks.length === 3);
+        client.assert(response.body.totalScore === 270);
+    });
+%}
+
+### check multicast2
+### -------------------------------------------------------------------------
+### API-4  大额订单：RISK 与 CREDIT 降分，总分掉到 165
+### -------------------------------------------------------------------------
+POST {{base}}/check
+Content-Type: {{json}}
+
+{
+  "orderId": "D-4002",
+  "amount": 90000
+}
+
+> {%
+    client.test("大额订单总分下降", function () {
+        client.assert(response.body.totalScore === 165);
+    });
+%}
+
+### split
+### =========================================================================
+### API-5  <wireTap> 旁路 + <split> 拆单 + <toD> 动态路由
+### 标签：<split> <wireTap> <toD>
+### 预期：三个 SKU 分别进 WH-BOOK-SH / WH-COLD-HZ / WH-GENERAL-BJ
+### 观察：TOY 是未知类型，被 ItemNormalizeProcessor 收敛成 OTHER；
+###      [AUDIT] 日志出现在独立的 WireTap 线程，且晚于主流程返回
+### =========================================================================
+POST {{base}}/split
+Content-Type: {{json}}
+
+{
+  "orderId": "E-5001",
+  "items": [
+    { "sku": "BK-01", "type": "BOOK", "qty": 2 },
+    { "sku": "FD-09", "type": "FOOD", "qty": 1 },
+    { "sku": "XX-77", "type": "TOY",  "qty": 5 }
+  ]
+}
+
+> {%
+    client.test("三个 SKU 各自分仓", function () {
+        client.assert(response.body.length === 3);
+        client.assert(response.body[0].warehouse === "WH-BOOK-SH");
+        client.assert(response.body[1].warehouse === "WH-COLD-HZ");
+        client.assert(response.body[2].warehouse === "WH-GENERAL-BJ");
+        client.assert(response.body[2].channel === "OTHER", "未知类型应收敛为 OTHER");
+    });
+%}
+
+### fulfil APPROVED
+### =========================================================================
+### API-6  综合编排 —— 成功路径
+### 标签：以上全部组合
+### 输入：amount=20000（VIP 定级）、channel=APP、3 个商品行
+### 预期：decision=APPROVED，totalScore=270，fulfilment 三条
+### =========================================================================
+POST {{base}}/fulfil
+Content-Type: {{json}}
+
+{
+  "orderId": "F-6001",
+  "amount": 20000,
+  "channel": "APP",
+  "items": [
+    { "sku": "BK-01", "type": "BOOK", "qty": 2 },
+    { "sku": "FD-09", "type": "FOOD", "qty": 1 },
+    { "sku": "XX-77", "type": "TOY",  "qty": 5 }
+  ]
+}
+
+> {%
+    client.test("风控通过并完成履约", function () {
+        client.assert(response.status === 200);
+        client.assert(response.body.code === "OK");
+        client.assert(response.body.decision === "APPROVED");
+        client.assert(response.body.orderLevel === "VIP");
+        client.assert(response.body.totalScore === 270);
+        client.assert(response.body.fulfilment.length === 3);
+    });
+%}
+
+### fulfil REJECTED
+### -------------------------------------------------------------------------
+### API-6  综合编排 —— 风控拒绝路径
+### 关键：<filter> 拦截履约，但路由不终止，收口 Processor 照常执行
+### 预期：HTTP 仍是 200，code=REJECTED，fulfilment 为空数组，
+###      字段结构与成功路径【完全一致】
+### -------------------------------------------------------------------------
+POST {{base}}/fulfil
+Content-Type: {{json}}
+
+{
+  "orderId": "F-6002",
+  "amount": 90000,
+  "channel": "WEB",
+  "items": [
+    { "sku": "BK-02", "type": "BOOK", "qty": 1 }
+  ]
+}
+
+> {%
+    client.test("被拦截但响应结构一致", function () {
+        client.assert(response.status === 200, "filter 不应终止路由");
+        client.assert(response.body.code === "REJECTED");
+        client.assert(response.body.decision === "REJECTED");
+        client.assert(response.body.fulfilment.length === 0);
+        client.assert(response.body.checks.length === 3, "风控仍然跑完了三路");
+    });
+%}
+
+### fulfil STANDARD
+### -------------------------------------------------------------------------
+### API-6  边界：STANDARD 定级（金额不高、渠道不是 APP）
+### 预期：orderLevel=STANDARD，decision=APPROVED
+### -------------------------------------------------------------------------
+POST {{base}}/fulfil
+Content-Type: {{json}}
+
+{
+  "orderId": "F-6003",
+  "amount": 300,
+  "channel": "WEB",
+  "items": [
+    { "sku": "FD-01", "type": "FOOD", "qty": 3 }
+  ]
+}
+
+> {%
+    client.test("走 otherwise 且放行", function () {
+        client.assert(response.body.orderLevel === "STANDARD");
+        client.assert(response.body.decision === "APPROVED");
+    });
+%}

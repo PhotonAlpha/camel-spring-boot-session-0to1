@@ -48,7 +48,7 @@
             <log message="[API-4] >>> entering route, payload = ${body}"/>
 
             <multicast aggregationStrategy="scoreAggregationStrategy"
-                       parallelProcessing="true">
+                       parallelProcessing="true" executorService="myTaskPool">
                 <to uri="direct:api4-risk"/>
                 <to uri="direct:api4-credit"/>
                 <to uri="direct:api4-inventory"/>

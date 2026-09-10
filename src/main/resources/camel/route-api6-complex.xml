@@ -75,7 +75,7 @@
             <!-- 4. three risk checks in parallel -->
             <log message="[API-6] entering multicast for parallel risk checks..."/>
             <multicast aggregationStrategy="scoreAggregationStrategy"
-                       parallelProcessing="true">
+                       parallelProcessing="true" executorService="myTaskPool">
                 <to uri="direct:api4-risk"/>
                 <to uri="direct:api4-credit"/>
                 <to uri="direct:api4-inventory"/>
@@ -90,11 +90,11 @@
                 <simple>${header.decision} == 'APPROVED'</simple>
                 <log message="[API-6] filter passed -> fulfilment starts"/>
 
-                <wireTap uri="direct:audit-log"/>
+                <wireTap uri="direct:audit-log" executorService="myTaskPool"/>
 
                 <!-- restore the original payload, otherwise there is no items array to split -->
                 <setBody><simple>${exchangeProperty.originalOrder}</simple></setBody>
-
+<!--                split can support sync and async -->
                 <split aggregationStrategy="itemCollectAggregationStrategy">
                     <jsonpath>$.items</jsonpath>
                     <process ref="itemNormalizeProcessor"/>

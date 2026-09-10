@@ -4,6 +4,15 @@ server:
 spring:
   application:
     name: camel-session-0to1
+  task:
+    execution:
+      # Required since ThreadPoolConfig declares an Executor bean (myTaskPool). Boot's
+      # applicationTaskExecutor is guarded by @ConditionalOnMissingBean(Executor.class), so ANY
+      # user Executor bean makes it back off - and camel-platform-http needs a ThreadPoolTaskExecutor
+      # or SimpleAsyncTaskExecutor to serve the REST endpoints, otherwise startup fails with
+      # "No ThreadPoolTaskExecutor, SimpleAsyncTaskExecutor or DelegatingSecurityContextAsyncTaskExecutor
+      # configured". "force" keeps applicationTaskExecutor alongside the custom pool.
+      mode: force
   main:
     banner-mode: off
     # Required. Resolving the XML-defined CamelContext and Camel's *ComponentAutoConfiguration
@@ -40,25 +49,11 @@ management:
     web:
       exposure:
         include: health,info,metrics
-# No span exporter is on the classpath, so nothing is shipped anywhere: the traceId lives in the
-# log lines only. Add io.zipkin.reporter2:zipkin-reporter-brave (plus management.zipkin.tracing.
-# endpoint) later and the very same spans are sent to Zipkin.
+
 
 logging:
   pattern:
-    # Three MDC keys make up the prefix of every line:
-    #   camel.routeId          from <camelContext useMDCLogging="true">
-    #   trace_id / span_id     written by Camel's ActiveSpanManager on every route and endpoint
-    #                          span, and therefore present on every Camel thread (multicast
-    #                          children, wireTap, split sub-routes ...)
-    #   traceId / spanId       written by Brave's MDCScopeDecorator while a span scope is open on
-    #                          the current thread - that covers the non-Camel code, such as the
-    #                          Spring MVC MockRemoteApiController
-    # The two pairs hold the same value but neither alone covers every thread, so the pattern
-    # concatenates them and the inner %replace collapses the duplicate ("id" + "id" -> "id");
-    # the outer %replace turns the empty case (no span at all, e.g. at startup) into "~".
-    # Add %X{span_id:-}%X{spanId:-} the same way if you want to see the span nesting too.
-    console: "%d{HH:mm:ss.SSS} %highlight(%-5level) [%15.15thread] [%replace(%replace(%X{trace_id:-}%X{traceId:-}){'^(\\w+)\\1$','$1'}){'^$','~'}] [route:%X{camel.routeId:-~}] %cyan(%-40.40logger{39}) : %msg%n"
+    console: "%d{HH:mm:ss.SSS} %highlight(%-5level) [%15.15thread] [camel-app,%X{trace_id:-},%X{span_id:-}] [route:%X{camel.routeId:-~}] %cyan(%-40.40logger{39}) : %msg%n"
   level:
     root: INFO
     com.example.camel: INFO

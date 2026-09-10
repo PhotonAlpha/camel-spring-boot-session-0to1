@@ -85,8 +85,7 @@ public class RemoteCallService {
         // ---------- Use 2: ProducerTemplate calling a LOCAL Camel route ----------
         // direct: is a synchronous, same-thread, in-memory endpoint - the natural way to model a sub-flow
         log.info("[API-3][route call] -> direct:api3-calc-fee");
-        Map<String, Object> fee = producerTemplate.requestBody(
-                "direct:api3-calc-fee", request, Map.class);
+        Map<String, Object> fee = producerTemplate.requestBody("direct:api3-calc-fee", request, Map.class);
         log.info("[API-3][route call] <- direct:api3-calc-fee returned={}", fee);
 
         Number amount = (Number) request.getOrDefault("amount", 0);
