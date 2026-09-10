@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.example</groupId>
+    <artifactId>camel-session-0to1</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <name>camel-session-0to1</name>
+    <description>Apache Camel 入门课程项目：Spring Boot + Spring XML DSL (camel-context.xml)</description>
+
+    <properties>
+        <java.version>21</java.version>
+        <maven.compiler.release>21</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <spring-boot.version>3.5.14</spring-boot.version>
+        <spring-cloud.version>2025.0.2</spring-cloud.version>
+        <camel.version>4.18.2</camel.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- Spring Boot BOM：统一管理 Spring / Tomcat / Jackson / 日志 等版本 -->
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring-boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <!-- Spring Cloud BOM：为后续接入注册中心/配置中心/网关预留 -->
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <!-- Camel Spring Boot BOM：管理所有 camel-*-starter 的版本 -->
+            <dependency>
+                <groupId>org.apache.camel.springboot</groupId>
+                <artifactId>camel-spring-boot-dependencies</artifactId>
+                <version>${camel.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <!-- Spring Boot Web：提供内嵌 Tomcat，Camel 的 platform-http 会复用它 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- Camel 核心：CamelContext 自动装配、生命周期与 Spring Boot 对齐 -->
+        <dependency>
+            <groupId>org.apache.camel.springboot</groupId>
+            <artifactId>camel-spring-boot-starter</artifactId>
+        </dependency>
+        <!-- Spring XML DSL：让 @ImportResource 加载的 camel-context.xml 中的 <camelContext> 生效 -->
+        <dependency>
+            <groupId>org.apache.camel.springboot</groupId>
+            <artifactId>camel-spring-boot-xml-starter</artifactId>
+        </dependency>
+        <!-- REST DSL：提供 <rest>/<restConfiguration> 标签 -->
+        <dependency>
+            <groupId>org.apache.camel.springboot</groupId>
+            <artifactId>camel-rest-starter</artifactId>
+        </dependency>
+        <!-- platform-http：把 REST DSL 挂到 Spring Boot 的内嵌 Tomcat 上 -->
+        <dependency>
+            <groupId>org.apache.camel.springboot</groupId>
+            <artifactId>camel-platform-http-starter</artifactId>
+        </dependency>
+        <!-- Jackson：REST bindingMode=json 的 JSON 序列化/反序列化 -->
+        <dependency>
+            <groupId>org.apache.camel.springboot</groupId>
+            <artifactId>camel-jackson-starter</artifactId>
+        </dependency>
+        <!-- JSONPath：<jsonpath> 谓词/表达式 -->
+        <dependency>
+            <groupId>org.apache.camel.springboot</groupId>
+            <artifactId>camel-jsonpath-starter</artifactId>
+        </dependency>
+        <!-- HTTP 客户端：ProducerTemplate 调用远程 HTTP API、<toD> 动态路由到 http:// -->
+        <dependency>
+            <groupId>org.apache.camel.springboot</groupId>
+            <artifactId>camel-http-starter</artifactId>
+        </dependency>
+
+        <!-- ==================== 链路追踪（traceId 打进日志） ==================== -->
+        <!-- Actuator：带来 Micrometer Observation 与 Spring Boot 的 tracing 自动装配，
+             micrometer-tracing-bridge-brave 与 camel-observation 都挂在它上面 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <!-- Micrometer Tracing 的 Brave 实现：生成 traceId/spanId，
+             并通过 brave-context-slf4j 的 MDCScopeDecorator 把它们写进 SLF4J MDC -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-tracing-bridge-brave</artifactId>
+        </dependency>
+        <!-- Camel 侧的桥：每条路由/每次 Exchange 处理开一个 Observation（即 span），
+             traceId 因此能跨 direct:、multicast 并行线程、wireTap 线程与出站 HTTP 调用延续 -->
+        <dependency>
+            <groupId>org.apache.camel.springboot</groupId>
+            <artifactId>camel-observation-starter</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.camel</groupId>
+            <artifactId>camel-test-spring-junit5</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <version>${spring-boot.version}</version>
+                <executions>
+                    <execution>
+                        <goals><goal>repackage</goal></goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

@@ -1,0 +1,69 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: camel-session-0to1
+  main:
+    banner-mode: off
+    # Required. Resolving the XML-defined CamelContext and Camel's *ComponentAutoConfiguration
+    # beans forms a constructor-level cycle that @Lazy alone cannot break.
+    allow-circular-references: true
+
+# NOTE: the CamelContext of this project is defined in camel-context.xml, so camel-spring-boot's
+# auto-configuration has stepped aside. The runtime switches under camel.springboot.*
+# (use-mdc-logging / tracing / stream-caching ...) have NO effect here; they must be written as
+# attributes of <camelContext>. See the header comment of camel-context.xml.
+
+demo:
+  remote:
+    # The "external system" API-3 calls through its ProducerTemplate
+    # (served by MockRemoteApiController inside this same application).
+    base-url: http://localhost:${server.port}
+
+# ==== Distributed tracing ====================================================
+# spring-boot-starter-actuator + micrometer-tracing-bridge-brave build the Brave tracer;
+# camel-observation-starter feeds Camel into it (one span per route and per <to> endpoint).
+# Both are plain Spring auto-configurations that take the CamelContext as a constructor
+# argument, so - unlike the camel.springboot.* switches - they DO work with the XML-defined
+# CamelContext of this project.
+management:
+  tracing:
+    # Sample every request. Fine for a teaching project; lower it in production.
+    sampling:
+      probability: 1.0
+    propagation:
+      # W3C "traceparent" header (the default). Camel injects it into outbound HTTP calls, which
+      # is how API-3 and MockRemoteApiController end up sharing one traceId.
+      type: W3C
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+# No span exporter is on the classpath, so nothing is shipped anywhere: the traceId lives in the
+# log lines only. Add io.zipkin.reporter2:zipkin-reporter-brave (plus management.zipkin.tracing.
+# endpoint) later and the very same spans are sent to Zipkin.
+
+logging:
+  pattern:
+    # Three MDC keys make up the prefix of every line:
+    #   camel.routeId          from <camelContext useMDCLogging="true">
+    #   trace_id / span_id     written by Camel's ActiveSpanManager on every route and endpoint
+    #                          span, and therefore present on every Camel thread (multicast
+    #                          children, wireTap, split sub-routes ...)
+    #   traceId / spanId       written by Brave's MDCScopeDecorator while a span scope is open on
+    #                          the current thread - that covers the non-Camel code, such as the
+    #                          Spring MVC MockRemoteApiController
+    # The two pairs hold the same value but neither alone covers every thread, so the pattern
+    # concatenates them and the inner %replace collapses the duplicate ("id" + "id" -> "id");
+    # the outer %replace turns the empty case (no span at all, e.g. at startup) into "~".
+    # Add %X{span_id:-}%X{spanId:-} the same way if you want to see the span nesting too.
+    console: "%d{HH:mm:ss.SSS} %highlight(%-5level) [%15.15thread] [%replace(%replace(%X{trace_id:-}%X{traceId:-}){'^(\\w+)\\1$','$1'}){'^$','~'}] [route:%X{camel.routeId:-~}] %cyan(%-40.40logger{39}) : %msg%n"
+  level:
+    root: INFO
+    com.example.camel: INFO
+    org.apache.camel: INFO
+    # Uncomment to watch spans being opened/closed by the Camel <-> Micrometer bridge
+    # org.apache.camel.observation: DEBUG
+    # Uncomment to see how the REST endpoints get registered
+    # org.apache.camel.component.platform.http: DEBUG

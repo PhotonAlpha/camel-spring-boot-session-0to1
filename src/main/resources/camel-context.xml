@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ============================================================================
+   camel-context.xml  -  the single assembly entry point
+  ============================================================================
+   Loaded by @ImportResource("classpath:camel-context.xml") on CamelSession0to1Application.
+
+   This file does three things only, and holds no business route of its own:
+     1. <import>            pull the route fragment files under camel/ into the Spring container
+     2. <camelContext>      declare the runtime container and its runtime switches
+     3. <routeContextRef>   wire each fragment into the context
+                            (<restContextRef> does the same for the REST declarations)
+
+   How the fragments are split:
+     camel/rest-api.xml             <restContext>   HTTP entry points of all six APIs
+     camel/route-api1-basic.xml     <routeContext>  API-1 the basic chain
+     camel/route-api2-dispatch.xml  <routeContext>  API-2 branching and filtering
+     camel/route-api3-quote.xml     <routeContext>  API-3 ProducerTemplate
+     camel/route-api4-multicast.xml <routeContext>  API-4 parallel fan-out and aggregation
+     camel/route-api5-split.xml     <routeContext>  API-5 split / wireTap / toD
+     camel/route-shared.xml         <routeContext>  shared sub-routes (item-* and audit-log)
+     camel/route-api6-complex.xml   <routeContext>  API-6 the combined orchestration
+
+   Why split it this way: <routeContext> and <restContext> are the "route fragment" containers
+   provided by the Camel Spring XML DSL. They are ordinary Spring beans, so they can live in any
+   imported file and be assembled by <camelContext> through a ref. Each API then owns one file
+   holding both its routes and the notes that explain them, and <camelContext> keeps nothing but
+   the wiring, which makes the composition of the whole application obvious at a glance.
+  ============================================================================
+-->
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="
+           http://www.springframework.org/schema/beans
+           http://www.springframework.org/schema/beans/spring-beans.xsd
+           http://camel.apache.org/schema/spring
+           http://camel.apache.org/schema/spring/camel-spring.xsd">
+
+    <!-- (1) Pull in the route fragments. Each file holds one <restContext> or <routeContext> bean. -->
+    <import resource="classpath:camel/rest-api.xml"/>
+    <import resource="classpath:camel/route-api1-basic.xml"/>
+    <import resource="classpath:camel/route-api2-dispatch.xml"/>
+    <import resource="classpath:camel/route-api3-quote.xml"/>
+    <import resource="classpath:camel/route-api4-multicast.xml"/>
+    <import resource="classpath:camel/route-api5-split.xml"/>
+    <import resource="classpath:camel/route-shared.xml"/>
+    <import resource="classpath:camel/route-api6-complex.xml"/>
+
+    <!--
+      (2) <camelContext> is the Camel runtime container.
+            . it owns every route, component, endpoint, type converter and thread pool;
+            . an application normally needs exactly one;
+            . the id shows up in logs and JMX, so give it a meaningful name.
+      Note the xmlns switches to the Camel namespace here, so the nested tags need no prefix.
+
+      IMPORTANT: because the CamelContext is defined here in XML, camel-spring-boot's
+      auto-configuration has stepped aside, and the camel.springboot.* properties in
+      application.yml have NO effect. Runtime switches must be written as attributes of
+      <camelContext>, exactly as below:
+        useMDCLogging="true"     put routeId / exchangeId into the SLF4J MDC (printable in the log pattern)
+        useBreadcrumb="true"     propagate a breadcrumbId across routes to stitch a call chain together
+        trace="true"             print a detailed trace of every EIP step (very noisy; turn on to debug)
+        streamCache="true"       cache stream bodies so they are not drained by the first read
+                                 (essential for multicast and split)
+        startupSummaryLevel      how verbose the route listing printed at startup should be
+    -->
+    <camelContext id="camelSession0to1"
+                  xmlns="http://camel.apache.org/schema/spring"
+                  useMDCLogging="true"
+                  useBreadcrumb="true"
+                  trace="false"
+                  streamCache="true"
+                  startupSummaryLevel="Verbose">
+
+        <!--
+          (3) Wire the route fragments in.
+              The ref of <routeContextRef> / <restContextRef> points at the id of a
+              <routeContext id="..."> / <restContext id="..."> declared in a fragment file.
+              Mind the schema: these ref elements must appear BEFORE <restConfiguration>.
+        -->
+        <routeContextRef ref="api1RouteContext"/>
+        <routeContextRef ref="api2RouteContext"/>
+        <routeContextRef ref="api3RouteContext"/>
+        <routeContextRef ref="api4RouteContext"/>
+        <routeContextRef ref="api5RouteContext"/>
+        <routeContextRef ref="sharedRouteContext"/>
+        <routeContextRef ref="api6RouteContext"/>
+
+        <restContextRef ref="restApiContext"/>
+
+        <!--
+          (4) <restConfiguration> is the global REST DSL configuration, one per CamelContext.
+            component="platform-http"  mounts the REST endpoints on Spring Boot's embedded Tomcat,
+                                       so no extra port is opened and they share 8080 with any
+                                       plain @RestController.
+            bindingMode="json"         inbound JSON is deserialised into the type named by
+                                       <post type="...">, and the reply is serialised back to JSON.
+            enableCORS="true"          answers CORS pre-flight automatically, handy when calling
+                                       these endpoints straight from a browser.
+        -->
+        <restConfiguration component="platform-http"
+                           bindingMode="json"
+                           enableCORS="true">
+            <dataFormatProperty key="prettyPrint" value="true"/>
+        </restConfiguration>
+
+    </camelContext>
+</beans>
