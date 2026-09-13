@@ -6,3 +6,6 @@ target
 skills-lock.json
 CLAUDE.md
 HANDOFF.md
+
+# 项目内的验证/临时产物（见 tmp/README.md）
+tmp/

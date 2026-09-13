@@ -91,6 +91,11 @@
             <groupId>org.apache.camel.springboot</groupId>
             <artifactId>camel-http-starter</artifactId>
         </dependency>
+        <!-- Freemarker：API-3 用模板做出/入站报文的格式转换（防腐层） -->
+        <dependency>
+            <groupId>org.apache.camel.springboot</groupId>
+            <artifactId>camel-freemarker-starter</artifactId>
+        </dependency>
 
         <!-- ==================== 链路追踪（traceId 打进日志） ==================== -->
         <!-- Actuator：带来 Micrometer Observation 与 Spring Boot 的 tracing 自动装配，

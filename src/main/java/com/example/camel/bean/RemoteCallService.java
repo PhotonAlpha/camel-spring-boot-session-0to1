@@ -11,18 +11,32 @@ import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.UUID;
 
 /**
- * The heart of API-3: the two ways to use a {@link ProducerTemplate}.
+ * The heart of API-3: the two ways to use a {@link ProducerTemplate}, wrapped in a
+ * Freemarker-based anti-corruption layer.
  *
  * <p><b>What a ProducerTemplate is</b>: Camel's client-side API. It lets <i>any</i> Java code
  * push a message to an Endpoint without living inside a route. Think of it as Camel's
- * {@code RestTemplate}, except the target can be any component (http, jms, direct, file, ...).
+ * {@code RestTemplate}, except the target can be any component (freemarker, http, jms,
+ * direct, ...).
  *
  * <ul>
  *   <li>{@code sendBody(...)}    - InOnly: send and move on, no reply expected</li>
  *   <li>{@code requestBody(...)} - InOut: wait for and return the reply (used here)</li>
  * </ul>
+ *
+ * <p><b>The message flow</b> - note that every hop is the same template call:
+ * <pre>
+ *   internal order Map
+ *     -- freemarker:templates/request.ftl  --&gt; outbound JSON in the remote system's shape
+ *     -- http://.../mock/remote/fx-rate    --&gt; inbound JSON in the remote system's shape
+ *     -- freemarker:templates/response.ftl --&gt; business JSON this application understands
+ *   business Map
+ * </pre>
+ * Keeping both mappings in {@code .ftl} files means the remote system's format is described
+ * in exactly two places, and changing it never touches Java code.
  *
  * <p><b>Where does this ProducerTemplate come from?</b>
  * With the Spring XML DSL, {@code <camelContext>} automatically registers two beans in the
@@ -47,6 +61,11 @@ public class RemoteCallService {
 
     private static final Logger log = LoggerFactory.getLogger(RemoteCallService.class);
 
+    /** Renders the outbound payload in the remote system's request format. */
+    private static final String REQUEST_TEMPLATE = "freemarker:templates/request.ftl";
+    /** Maps the remote system's reply back into this application's own format. */
+    private static final String RESPONSE_TEMPLATE = "freemarker:templates/response.ftl";
+
     private final ProducerTemplate producerTemplate;
     private final ObjectMapper objectMapper;
     private final String remoteBaseUrl;
@@ -65,27 +84,43 @@ public class RemoteCallService {
     @SuppressWarnings("unchecked")
     public Map<String, Object> handle(Map<String, Object> request) throws Exception {
         log.info("[API-3][entry] request={}", request);
+        String msgId = UUID.randomUUID().toString();
 
-        // ---------- Use 1: ProducerTemplate calling a REMOTE HTTP API ----------
-        String currency = String.valueOf(request.getOrDefault("currency", "USD"));
-        String json = objectMapper.writeValueAsString(Map.of("currency", currency));
+        // ---------- Step 1: render the outbound payload with request.ftl ----------
+        // The internal order Map goes in, the remote system's envelope comes out as text.
+        // The template is the only thing that knows that shape.
+        String outboundJson = producerTemplate.requestBodyAndHeader(
+                REQUEST_TEMPLATE, request, "msgId", msgId, String.class);
+        log.info("[API-3][request.ftl] internal order -> remote request format:\n{}",
+                outboundJson.trim());
+
+        // ---------- Step 2: ProducerTemplate calling a REMOTE HTTP API ----------
         String url = remoteBaseUrl + "/mock/remote/fx-rate";
-
-        log.info("[API-3][remote call] POST {} payload={}", url, json);
+        log.info("[API-3][remote call] POST {}", url);
         String remoteRaw = producerTemplate.requestBodyAndHeaders(
                 // camel-http producer endpoint; bridgeEndpoint makes it ignore the inbound path/query
                 "http://" + stripScheme(url) + "?bridgeEndpoint=true",
-                json,
+                outboundJson,
                 Map.of(Exchange.HTTP_METHOD, "POST",
                        Exchange.CONTENT_TYPE, "application/json"),
                 String.class);
-        Map<String, Object> remote = objectMapper.readValue(remoteRaw, Map.class);
-        log.info("[API-3][remote call] response={}", remote);
+        log.info("[API-3][remote call] raw reply={}", remoteRaw);
 
-        // ---------- Use 2: ProducerTemplate calling a LOCAL Camel route ----------
+        // ---------- Step 3: map the reply back with response.ftl ----------
+        // The reply is text, so it is parsed into a Map first; the template then flattens the
+        // remote envelope into the shape the rest of this application expects.
+        Map<String, Object> remoteReply = objectMapper.readValue(remoteRaw, Map.class);
+        String businessJson = producerTemplate.requestBody(
+                RESPONSE_TEMPLATE, remoteReply, String.class);
+        log.info("[API-3][response.ftl] remote reply -> business format:\n{}",
+                businessJson.trim());
+        Map<String, Object> remote = objectMapper.readValue(businessJson, Map.class);
+
+        // ---------- Step 4: ProducerTemplate calling a LOCAL Camel route ----------
         // direct: is a synchronous, same-thread, in-memory endpoint - the natural way to model a sub-flow
         log.info("[API-3][route call] -> direct:api3-calc-fee");
-        Map<String, Object> fee = producerTemplate.requestBody("direct:api3-calc-fee", request, Map.class);
+        Map<String, Object> fee = producerTemplate.requestBody(
+                "direct:api3-calc-fee", request, Map.class);
         log.info("[API-3][route call] <- direct:api3-calc-fee returned={}", fee);
 
         Number amount = (Number) request.getOrDefault("amount", 0);
@@ -94,12 +129,14 @@ public class RemoteCallService {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("code", "OK");
         result.put("orderId", request.get("orderId"));
-        result.put("currency", currency);
+        result.put("currency", remote.get("currency"));
         result.put("rate", rate);
         result.put("amountInCNY", round2(amount.doubleValue() * rate));
         result.put("fee", fee.get("fee"));
         result.put("feeRule", fee.get("rule"));
         result.put("remoteProvider", remote.get("provider"));
+        result.put("remoteCode", remote.get("remoteCode"));
+        result.put("msgId", msgId);
         log.info("[API-3][exit] summary={}", result);
         return result;
     }
