@@ -67,6 +67,11 @@
             <post path="/fulfil" type="java.util.Map" outType="java.util.Map">
                 <to uri="direct:api6-fulfil"/>
             </post>
+
+            <!-- API-7 remote call through a Spring @HttpExchange interface -->
+            <post path="/accounts" type="java.util.Map" outType="java.util.Map">
+                <to uri="direct:api7-accounts"/>
+            </post>
         </rest>
 
     </restContext>

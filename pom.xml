@@ -13,6 +13,10 @@
     <properties>
         <java.version>21</java.version>
         <maven.compiler.release>21</maven.compiler.release>
+        <!-- 保留方法参数名。spring-boot-starter-parent 默认开这个，本项目只导入 BOM 所以要手工加。
+             Spring 的 @HttpExchange / @RequestHeader / @RequestParam 在注解没写 name 时
+             要靠参数名反射，缺了它会报 "parameter name information not available via reflection"。 -->
+        <maven.compiler.parameters>true</maven.compiler.parameters>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
         <spring-boot.version>3.5.14</spring-boot.version>

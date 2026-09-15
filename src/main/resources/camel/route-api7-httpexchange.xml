@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ============================================================================
+   route-api7-httpexchange.xml  -  API-7, calling a Spring @HttpExchange interface
+  ============================================================================
+   Tags covered: <rest> <post> <to> <from> <setHeader> plus the custom
+   httpexchange: component.
+
+   This is the declarative counterpart to API-3. Same job - call an external system
+   and translate the payload in both directions - but the HTTP contract lives in a
+   Java interface instead of a URI string, and no ProducerTemplate is involved.
+
+   Imported by camel-context.xml via <import resource="classpath:camel/route-api7-httpexchange.xml"/>,
+   then wired into the context by <routeContextRef ref="api7RouteContext"/>.
+  ============================================================================
+-->
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="
+           http://www.springframework.org/schema/beans
+           http://www.springframework.org/schema/beans/spring-beans.xsd
+           http://camel.apache.org/schema/spring
+           http://camel.apache.org/schema/spring/camel-spring.xsd">
+
+    <routeContext id="api7RouteContext" xmlns="http://camel.apache.org/schema/spring">
+
+        <!--
+          ####################################################################
+          API-7  POST /api/v1/orders/accounts
+          Tags: <rest> <post> <to> <from> <setHeader> + httpexchange: component
+          ####################################################################
+          The whole remote call is one <to>. Its URI reads:
+
+            httpexchange:<beanName>/<methodName>
+                ?requestTemplate=...    rendered before the call; the result is bound
+                                        to the @RequestBody parameter
+                &responseTemplate=...   rendered after the call, on the unwrapped reply
+                &unmarshalTo=...        parse the rendered text back into an object so
+                                        the REST layer can serialise it as JSON
+                &forwardHeaders=...     which Exchange headers become HTTP headers
+
+          What the component does with the interface below:
+
+            ResponseEntity<List<MyAccountDetailsVO>> listUser(
+                    @RequestBody  MyAccountDetailsVO  user,        <- artisan-request.ftl
+                    @RequestHeader HttpHeaders        httpHeaders, <- forwardHeaders
+                    @RequestParam  Map<String,String> params)      <- queryParamsHeader
+
+          Note there is no <to uri="http://..."/> and no ProducerTemplate anywhere:
+          the URL, the verb and both payload types are declared on ArtisanClient and
+          checked by the compiler.
+        -->
+        <route id="api7-account-lookup">
+            <from uri="direct:api7-accounts"/>
+            <log message="[API-7] >>> entering route, payload = ${body}"/>
+
+            <!-- Headers the component will forward to the remote call -->
+            <setHeader name="orderId"><simple>${body[orderId]}</simple></setHeader>
+            <setHeader name="userName"><simple>${body[userName]}</simple></setHeader>
+            <setHeader name="X-Trace-Id"><simple>${exchangeId}</simple></setHeader>
+            <setHeader name="X-Channel"><simple>${body[channel]}</simple></setHeader>
+
+            <!-- The Map behind the @RequestParam parameter -->
+            <setHeader name="HttpExchangeQueryParams">
+                <method ref="artisanQueryParams" method="build"/>
+            </setHeader>
+
+            <to uri="httpexchange:artisanClient/listUser?requestTemplate=templates/artisan-request.ftl&amp;responseTemplate=templates/artisan-response.ftl&amp;unmarshalTo=java.util.Map&amp;forwardHeaders=X-Trace-Id,X-Channel"/>
+
+            <log message="[API-7] &lt;&lt;&lt; route finished, reply = ${body}"/>
+        </route>
+
+    </routeContext>
+</beans>

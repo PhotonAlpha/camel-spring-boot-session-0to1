@@ -20,6 +20,7 @@
      camel/route-api5-split.xml     <routeContext>  API-5 split / wireTap / toD
      camel/route-shared.xml         <routeContext>  shared sub-routes (item-* and audit-log)
      camel/route-api6-complex.xml   <routeContext>  API-6 the combined orchestration
+     camel/route-api7-httpexchange.xml <routeContext> API-7 @HttpExchange via a custom component
 
    Why split it this way: <routeContext> and <restContext> are the "route fragment" containers
    provided by the Camel Spring XML DSL. They are ordinary Spring beans, so they can live in any
@@ -45,6 +46,7 @@
     <import resource="classpath:camel/route-api5-split.xml"/>
     <import resource="classpath:camel/route-shared.xml"/>
     <import resource="classpath:camel/route-api6-complex.xml"/>
+    <import resource="classpath:camel/route-api7-httpexchange.xml"/>
 
     <!--
       (2) <camelContext> is the Camel runtime container.
@@ -85,6 +87,7 @@
         <routeContextRef ref="api5RouteContext"/>
         <routeContextRef ref="sharedRouteContext"/>
         <routeContextRef ref="api6RouteContext"/>
+        <routeContextRef ref="api7RouteContext"/>
 
         <restContextRef ref="restApiContext"/>
 

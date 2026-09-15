@@ -39,4 +39,7 @@ hit "API-6  综合编排：成功路径 (VIP + APPROVED + 完整履约)" /fulfil
 hit "API-6  综合编排：拒绝路径 (filter 拦截履约，仍返回 200 与完整结构)" /fulfil \
   '{"orderId":"F-6002","amount":90000,"channel":"WEB","items":[{"sku":"BK-02","type":"BOOK","qty":1}]}'
 
+hit "API-7  自定义组件 httpexchange: 调用 @HttpExchange 接口（出入站各一次 ftl 转换）" /accounts \
+  '{"orderId":"G-7001","userName":"ethan","channel":"APP","amount":2000}'
+
 printf '\n\033[1;32m全部用例执行完毕，请对照应用控制台日志观察每一步 EIP 的执行轨迹。\033[0m\n'
