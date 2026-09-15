@@ -30,6 +30,43 @@ demo:
     # (served by MockRemoteApiController inside this same application).
     base-url: http://localhost:${server.port}
 
+  # ==== OpenAPI groups =======================================================
+  # There is one specification (classpath:openapi.yaml, hand-written because springdoc cannot see
+  # Camel REST DSL routes) and a group is a filtered view of it: an operation is kept when its tags
+  # intersect the group's tags, paths left empty are dropped, and unreferenced schemas are pruned.
+  # Each group becomes /openapi/<name>.yaml plus one entry in the Swagger UI definition dropdown.
+  #
+  # The groups themselves are declared by x-groups INSIDE openapi.yaml, next to the tags they
+  # select - that is the place to add or edit one. The list below overrides them entirely when it
+  # is non-empty, which is only for a deployment that must publish a different selection than the
+  # packaged document describes. A tag that does not exist in the spec fails startup either way.
+  openapi:
+    spec: classpath:openapi.yaml
+    # groups:
+    #   - name: business-only
+    #     display-name: Business APIs
+    #     tags: [API-1 basic, API-2 dispatch]
+
+springdoc:
+  api-docs:
+    # Must stay enabled: SwaggerUiConfigProperties is @ConditionalOnBean(SpringDocConfiguration),
+    # and that configuration is itself guarded by this flag - switching it off takes the whole
+    # Swagger UI down with it.
+    enabled: true
+    path: /v3/api-docs
+  # springdoc's scanner only understands @RestController. It cannot see <rest>/<post> in
+  # camel/rest-api.xml, so left alone it would publish the two mock controllers as if they were
+  # the whole API. Pointing it at a package that holds no controller keeps /v3/api-docs empty and
+  # makes the split obvious: everything real is served from openapi.yaml by OpenApiGroupController.
+  packages-to-scan: com.example.camel.no-such-package
+  swagger-ui:
+    path: /swagger-ui.html
+    # The dropdown is populated by SwaggerUiGroupConfig from the groups; the display options
+    # (filter box, docExpansion, ...) come from x-swagger-ui inside openapi.yaml, because they are
+    # a property of that document rather than of this deployment. Anything set here still wins:
+    # only options left unset are filled from the spec.
+    disable-swagger-default-url: true
+
 # ==== Distributed tracing ====================================================
 # spring-boot-starter-actuator + micrometer-tracing-bridge-brave build the Brave tracer;
 # camel-observation-starter feeds Camel into it (one span per route and per <to> endpoint).
