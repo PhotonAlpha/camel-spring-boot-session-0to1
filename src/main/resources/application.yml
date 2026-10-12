@@ -1,5 +1,10 @@
 server:
   port: 8080
+  tomcat:
+    # API-8 sends the file as Base64 in a TEXT form field, and Tomcat counts text fields of a
+    # multipart request against maxPostSize (2MB by default), not against max-file-size below.
+    # Keep it in line with spring.servlet.multipart.max-request-size.
+    max-http-form-post-size: 10MB
 
 spring:
   application:
@@ -18,6 +23,12 @@ spring:
     # Required. Resolving the XML-defined CamelContext and Camel's *ComponentAutoConfiguration
     # beans forms a constructor-level cycle that @Lazy alone cannot break.
     allow-circular-references: true
+  servlet:
+    multipart:
+      # Read by Tomcat when Base64FileMultipartFilter calls request.getParts() for API-8.
+      # The "file" field is Base64 text, about 4/3 of the file size, and is decoded in memory.
+      max-file-size: 5MB
+      max-request-size: 10MB
 
 # NOTE: the CamelContext of this project is defined in camel-context.xml, so camel-spring-boot's
 # auto-configuration has stepped aside. The runtime switches under camel.springboot.*

@@ -1,6 +1,6 @@
 package com.example.camel.bean;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import org.apache.camel.Exchange;
 import org.apache.camel.ProducerTemplate;
 import org.slf4j.Logger;
@@ -67,11 +67,11 @@ public class RemoteCallService {
     private static final String RESPONSE_TEMPLATE = "freemarker:templates/response.ftl";
 
     private final ProducerTemplate producerTemplate;
-    private final ObjectMapper objectMapper;
+    private final JsonMapper objectMapper;
     private final String remoteBaseUrl;
 
     public RemoteCallService(@Lazy ProducerTemplate producerTemplate,
-                             ObjectMapper objectMapper,
+                             JsonMapper objectMapper,
                              @Value("${demo.remote.base-url}") String remoteBaseUrl) {
         this.producerTemplate = producerTemplate;
         this.objectMapper = objectMapper;

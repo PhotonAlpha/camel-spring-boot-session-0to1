@@ -9,3 +9,7 @@ HANDOFF.md
 
 # 项目内的验证/临时产物（见 tmp/README.md）
 tmp/
+docs/*.py
+docs/Camel-入门指南-通俗版.pptx
+docs/Camel-API6-复杂编排流程.pptx
+docs/Camel-API6-Complex-Orchestration.pptx

@@ -1,7 +1,7 @@
 package com.example.camel.client;
 
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -23,12 +23,17 @@ import java.util.Map;
  *
  * <p>No implementation is written: {@code HttpServiceProxyFactory} generates the proxy, and the
  * {@code httpexchange:} Camel component invokes it.
+ *
+ * <p>Headers are taken as a {@code MultiValueMap} rather than {@code HttpHeaders}: since Spring
+ * Framework 7, {@code HttpHeaders} no longer implements {@code MultiValueMap}, and the HTTP
+ * interface client treats an {@code @RequestHeader HttpHeaders} argument as one header value
+ * ("No converter found ... HttpHeaders to String").
  */
 @HttpExchange("${demo.remote.base-url}/buziVa/artisan")
 public interface ArtisanClient {
 
     @PostExchange("list")
     ResponseEntity<List<MyAccountDetailsVO>> listUser(@RequestBody MyAccountDetailsVO user,
-                                                      @RequestHeader HttpHeaders httpHeaders,
+                                                      @RequestHeader MultiValueMap<String, String> httpHeaders,
                                                       @RequestParam Map<String, String> params);
 }

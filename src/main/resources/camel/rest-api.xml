@@ -3,7 +3,7 @@
   ============================================================================
    rest-api.xml  -  REST endpoint declarations (REST DSL)
   ============================================================================
-   The HTTP entry points of all six APIs. Nothing but protocol adaptation happens here:
+   The HTTP entry points of all eight APIs. Nothing but protocol adaptation happens here:
    the request becomes an Exchange and is handed to a direct route with <to>.
 
    Imported by camel-context.xml via <import resource="classpath:camel/rest-api.xml"/>,
@@ -71,6 +71,20 @@
             <!-- API-7 remote call through a Spring @HttpExchange interface -->
             <post path="/accounts" type="java.util.Map" outType="java.util.Map">
                 <to uri="direct:api7-accounts"/>
+            </post>
+        </rest>
+
+        <!--
+          API-8 file upload. A second <rest> because the prefix differs.
+          consumes      documents the accepted media type
+          bindingMode   "off" overrides the global json binding for this verb only:
+                        the body is the uploaded file, not JSON, so it must not be parsed.
+          The "file" field arrives as Base64 text; Base64FileMultipartFilter has already
+          turned it into a binary file part by the time Camel sees the request.
+        -->
+        <rest path="/api/v1/files">
+            <post path="/upload" consumes="multipart/form-data" produces="application/json" bindingMode="off">
+                <to uri="direct:api8-upload"/>
             </post>
         </rest>
 

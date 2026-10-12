@@ -6,7 +6,7 @@ openapi: 3.0.3
 #  Generated from .idea/rest/API-requests.http and verified against
 #  src/main/resources/camel/rest-api.xml plus the processors that assemble the
 #  replies. Every example below is one of the cases in that .http collection,
-#  so this file and ./test-apis.sh describe the same nine calls.
+#  so this file and ./test-apis.sh describe the same calls.
 #
 #  Routes are declared in Spring XML DSL; the REST layer only adapts HTTP to an
 #  Exchange and hands it to a direct: endpoint. See CLAUDE.md for the mapping
@@ -17,7 +17,7 @@ info:
   title: camel-session-0to1 API
   version: 1.0.0-SNAPSHOT
   description: |
-    Apache Camel teaching project. Seven business endpoints, each demonstrating
+    Apache Camel teaching project. Eight business endpoints, each demonstrating
     one group of EIP tags, plus the two "external systems" that API-3 and API-7
     call over real HTTP.
 
@@ -69,7 +69,7 @@ x-groups:
     # no criteria = the whole document
 
   - name: business
-    displayName: Business APIs (API-1 ~ API-7)
+    displayName: Business APIs (API-1 ~ API-8)
     tags:
       - API-1 basic
       - API-2 dispatch
@@ -78,6 +78,7 @@ x-groups:
       - API-5 split
       - API-6 fulfil
       - API-7 accounts
+      - API-8 upload
 
   - name: mock
     displayName: Mock external systems
@@ -100,9 +101,9 @@ x-groups:
     displayName: Public API (nothing internal)
     excludeInternal: true
 
-  # The same seven endpoints as "business", selected by URL instead of by tag -
-  # the dimensions are interchangeable when tags and paths line up, and paths win
-  # when they do not. methods is redundant here (this project is POST-only) and
+  # The order endpoints of "business" (API-1 ~ API-7), selected by URL instead of
+  # by tag - the dimensions are interchangeable when tags and paths line up, and
+  # paths win when they do not: API-8 lives under /api/v1/files and is left out. methods is redundant here (this project is POST-only) and
   # is listed to show the syntax.
   - name: orders
     displayName: Everything under /api/v1/orders
@@ -144,6 +145,8 @@ tags:
     description: "all of the above combined - route api6-complex-fulfilment"
   - name: API-7 accounts
     description: "custom `httpexchange:` component over a Spring `@HttpExchange` interface - route api7-account-lookup"
+  - name: API-8 upload
+    description: "`multipart/form-data` upload whose file field is Base64, decoded by a servlet filter - route api8-file-upload"
   - name: mock externals
     description: Plain Spring MVC controllers acting as third-party systems; not Camel routes.
 
@@ -610,6 +613,76 @@ paths:
                   - { id: G-7001-CREDIT,  owner: ethan, channel: APP, amount: 3000 }
 
   # ===========================================================================
+  #  API-8  file upload
+  # ===========================================================================
+  /api/v1/files/upload:
+    post:
+      tags: [API-8 upload]
+      summary: Upload a file sent as Base64 in a multipart/form-data field
+      description: |
+        A `multipart/form-data` request whose `file` field is a **text** field
+        holding the file bytes encoded as Base64 - plain, or as a data URL
+        (`data:image/png;base64,...`).
+
+        `Base64FileMultipartFilter`, a servlet filter mounted on `/api/v1/files/*`,
+        decodes it before Camel sees the request and swaps the text part for a
+        binary file part named `file`, with `fileName` / `contentType` (or the
+        data URL prefix) as its filename and media type. platform-http then turns
+        that part into a Camel attachment, which `fileUploadProcessor` reads as
+        bytes. Every other field reaches the route as a header.
+
+        A `file` part that already is a binary upload passes through unchanged.
+        Invalid Base64 is rejected by the filter with 400, an upload above the
+        size limits with 413, a missing `file` field fails in the route with 500.
+      operationId: uploadFile
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/FileUploadRequest'
+            example:
+              orderId: H-8001
+              fileName: hello.txt
+              contentType: text/plain
+              file: aGVsbG8gY2FtZWwgdXBsb2FkCg==
+      responses:
+        '200':
+          description: The decoded file as the route received it
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileUploadResponse'
+              example:
+                code: OK
+                orderId: H-8001
+                fileName: hello.txt
+                contentType: text/plain
+                size: 19
+                sha256: fb99054056791a252f4ddbb7765d6ad8c1b68d2a11f82f3c0fae510c83e6a86a
+                preview: "hello camel upload\n"
+                exchangeId: 60BAFF8E8AB5FD3-0000000000000000
+                processedAt: "2026-10-13 00:04:40"
+        '400':
+          description: The file field is not valid Base64 (answered by the filter)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileUploadError'
+              example:
+                code: BAD_REQUEST
+                message: field 'file' must be the file content encoded as Base64
+        '413':
+          description: Above server.tomcat.max-http-form-post-size or spring.servlet.multipart limits
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileUploadError'
+              example:
+                code: PAYLOAD_TOO_LARGE
+                message: the upload exceeds the configured size limits
+
+  # ===========================================================================
   #  The two "external systems"
   # ===========================================================================
   /mock/remote/fx-rate:
@@ -1005,6 +1078,62 @@ components:
         owner: { type: string, example: ethan }
         channel: { type: string, example: APP }
         amount: { type: number, format: double, example: 2000 }
+
+    # ---------------------------------------------------------------- API-8
+    FileUploadRequest:
+      type: object
+      required: [file]
+      description: Any further field reaches the route as an Exchange header.
+      properties:
+        file:
+          type: string
+          format: byte
+          description: |
+            The file bytes encoded as Base64, sent as a TEXT field. A data URL
+            (`data:<type>;base64,<data>`) is accepted too; line breaks are tolerated.
+          example: aGVsbG8gY2FtZWwgdXBsb2FkCg==
+        fileName:
+          type: string
+          description: Filename of the decoded part; defaults to upload.bin.
+          example: hello.txt
+        contentType:
+          type: string
+          description: Media type of the decoded part; defaults to the data URL type, then application/octet-stream.
+          example: text/plain
+        orderId: { type: string, example: H-8001 }
+
+    FileUploadResponse:
+      type: object
+      properties:
+        code: { type: string, example: OK }
+        orderId:
+          type: string
+          description: Echoed from the orderId form field; null when absent.
+          example: H-8001
+        fileName: { type: string, example: hello.txt }
+        contentType: { type: string, example: text/plain }
+        size:
+          type: integer
+          description: Length of the decoded bytes.
+          example: 19
+        sha256:
+          type: string
+          description: Hex SHA-256 of the decoded bytes.
+        preview:
+          type: string
+          description: First 64 characters; present for text/* files only.
+        exchangeId: { type: string }
+        processedAt:
+          type: string
+          example: "2026-10-13 00:04:40"
+
+    FileUploadError:
+      type: object
+      properties:
+        code:
+          type: string
+          enum: [BAD_REQUEST, PAYLOAD_TOO_LARGE]
+        message: { type: string }
 
     # ------------------------------------------------------- mock externals
     FxEnvelopeRequest:

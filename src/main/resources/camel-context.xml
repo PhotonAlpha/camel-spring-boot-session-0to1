@@ -12,7 +12,7 @@
                             (<restContextRef> does the same for the REST declarations)
 
    How the fragments are split:
-     camel/rest-api.xml             <restContext>   HTTP entry points of all six APIs
+     camel/rest-api.xml             <restContext>   HTTP entry points of all eight APIs
      camel/route-api1-basic.xml     <routeContext>  API-1 the basic chain
      camel/route-api2-dispatch.xml  <routeContext>  API-2 branching and filtering
      camel/route-api3-quote.xml     <routeContext>  API-3 ProducerTemplate
@@ -21,6 +21,7 @@
      camel/route-shared.xml         <routeContext>  shared sub-routes (item-* and audit-log)
      camel/route-api6-complex.xml   <routeContext>  API-6 the combined orchestration
      camel/route-api7-httpexchange.xml <routeContext> API-7 @HttpExchange via a custom component
+     camel/route-api8-upload.xml    <routeContext>  API-8 file upload (multipart, Base64 file field)
 
    Why split it this way: <routeContext> and <restContext> are the "route fragment" containers
    provided by the Camel Spring XML DSL. They are ordinary Spring beans, so they can live in any
@@ -47,6 +48,7 @@
     <import resource="classpath:camel/route-shared.xml"/>
     <import resource="classpath:camel/route-api6-complex.xml"/>
     <import resource="classpath:camel/route-api7-httpexchange.xml"/>
+    <import resource="classpath:camel/route-api8-upload.xml"/>
 
     <!--
       (2) <camelContext> is the Camel runtime container.
@@ -88,6 +90,7 @@
         <routeContextRef ref="sharedRouteContext"/>
         <routeContextRef ref="api6RouteContext"/>
         <routeContextRef ref="api7RouteContext"/>
+        <routeContextRef ref="api8RouteContext"/>
 
         <restContextRef ref="restApiContext"/>
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 一键回归全部 6 个 API。用法：./test-apis.sh [host:port]
+# 一键回归全部 8 个 API。用法：./test-apis.sh [host:port]
 # 前提：应用已启动（mvn spring-boot:run 或 java -jar target/*.jar）
 set -u
 HOST="${1:-localhost:8080}"
@@ -41,5 +41,18 @@ hit "API-6  综合编排：拒绝路径 (filter 拦截履约，仍返回 200 与
 
 hit "API-7  自定义组件 httpexchange: 调用 @HttpExchange 接口（出入站各一次 ftl 转换）" /accounts \
   '{"orderId":"G-7001","userName":"ethan","channel":"APP","amount":2000}'
+
+# API-8 不在 /api/v1/orders 下，且是 multipart，不走 hit()
+UPLOAD="http://${HOST}/api/v1/files/upload"
+
+printf '\n\033[1;36m===== %s =====\033[0m\n' "API-8a 上传：multipart，file 字段是文件内容的 Base64（filter 解码成二进制文件）"
+curl -s -X POST "$UPLOAD" -F orderId=H-8001 -F fileName=hello.txt -F contentType=text/plain \
+  -F "file=$(printf 'hello camel upload\n' | base64)"
+printf '\n'
+
+printf '\n\033[1;36m===== %s =====\033[0m\n' "API-8b 上传：file 是 Base64 data URL（content type 取自前缀；--form-string 防止 curl 把 ; 当选项）"
+curl -s -X POST "$UPLOAD" -F orderId=H-8002 -F fileName=hello.txt \
+  --form-string "file=data:text/plain;base64,$(printf 'hello camel upload\n' | base64)"
+printf '\n'
 
 printf '\n\033[1;32m全部用例执行完毕，请对照应用控制台日志观察每一步 EIP 的执行轨迹。\033[0m\n'

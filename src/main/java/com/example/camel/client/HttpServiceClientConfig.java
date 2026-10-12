@@ -11,9 +11,9 @@ import org.springframework.web.service.invoker.HttpServiceProxyFactory;
 /**
  * Builds the {@code @HttpExchange} proxies.
  *
- * <p>Spring Framework 6.2 has no auto-registration for HTTP interfaces - {@code @ImportHttpServices}
- * and {@code @HttpServiceClient} only arrive in Framework 7 / Boot 4 - so each client is declared
- * as a bean here. That is the one piece of boilerplate this approach costs today.
+ * <p>Each client is declared as a bean by hand. Framework 7 / Boot 4 can register HTTP interfaces
+ * automatically ({@code @ImportHttpServices}), but the explicit wiring is kept on purpose so the
+ * teaching code shows how the proxy is actually built.
  *
  * <p>{@code embeddedValueResolver} is what makes {@code @HttpExchange("${demo.remote.base-url}/...")}
  * resolve against the environment; without it the annotation value is taken literally.

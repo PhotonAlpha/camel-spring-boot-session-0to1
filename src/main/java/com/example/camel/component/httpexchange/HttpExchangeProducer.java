@@ -1,16 +1,17 @@
 package com.example.camel.component.httpexchange;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import org.apache.camel.Exchange;
 import org.apache.camel.support.DefaultProducer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
@@ -42,7 +43,7 @@ import java.util.stream.Collectors;
  * <table>
  *   <tr><th>Parameter</th><th>Bound from</th></tr>
  *   <tr><td>{@code @RequestBody}</td><td>the rendered request template (or the message body)</td></tr>
- *   <tr><td>{@code @RequestHeader} / {@link HttpHeaders}</td><td>Exchange headers</td></tr>
+ *   <tr><td>{@code @RequestHeader} on a Map / MultiValueMap</td><td>Exchange headers</td></tr>
  *   <tr><td>{@code @RequestParam} on a Map</td><td>the Exchange header named by {@code queryParamsHeader}</td></tr>
  *   <tr><td>{@code @PathVariable}</td><td>the Exchange header of the same name</td></tr>
  * </table>
@@ -56,7 +57,7 @@ public class HttpExchangeProducer extends DefaultProducer {
 
     private final HttpExchangeEndpoint endpoint;
     private final FreemarkerRenderer renderer = new FreemarkerRenderer();
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final JsonMapper objectMapper = new JsonMapper();
 
     private Object client;
     private Method method;
@@ -189,9 +190,11 @@ public class HttpExchangeProducer extends DefaultProducer {
             Parameter p = parameters[i];
             if (p.isAnnotationPresent(RequestBody.class)) {
                 args[i] = convertBody(payload, p.getType());
-            } else if (HttpHeaders.class.isAssignableFrom(p.getType())
-                    || p.isAnnotationPresent(RequestHeader.class)) {
-                args[i] = buildHeaders(exchange);
+            } else if (p.isAnnotationPresent(RequestHeader.class)
+                    && Map.class.isAssignableFrom(p.getType())) {
+                MultiValueMap<String, String> headers = buildHeaders(exchange);
+                args[i] = MultiValueMap.class.isAssignableFrom(p.getType())
+                        ? headers : headers.toSingleValueMap();
             } else if (p.isAnnotationPresent(RequestParam.class)
                     && Map.class.isAssignableFrom(p.getType())) {
                 args[i] = buildQueryParams(exchange);
@@ -216,8 +219,8 @@ public class HttpExchangeProducer extends DefaultProducer {
         return objectMapper.convertValue(payload, targetType);
     }
 
-    private HttpHeaders buildHeaders(Exchange exchange) {
-        HttpHeaders headers = new HttpHeaders();
+    private MultiValueMap<String, String> buildHeaders(Exchange exchange) {
+        MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
         List<String> allowList = endpoint.getForwardHeaders() == null ? null
                 : Arrays.stream(endpoint.getForwardHeaders().split(","))
                         .map(String::trim).filter(s -> !s.isEmpty()).collect(Collectors.toList());

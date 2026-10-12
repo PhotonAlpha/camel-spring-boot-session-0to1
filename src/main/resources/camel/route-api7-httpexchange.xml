@@ -42,9 +42,9 @@
           What the component does with the interface below:
 
             ResponseEntity<List<MyAccountDetailsVO>> listUser(
-                    @RequestBody  MyAccountDetailsVO  user,        <- artisan-request.ftl
-                    @RequestHeader HttpHeaders        httpHeaders, <- forwardHeaders
-                    @RequestParam  Map<String,String> params)      <- queryParamsHeader
+                    @RequestBody   MyAccountDetailsVO           user,        <- artisan-request.ftl
+                    @RequestHeader MultiValueMap<String,String> httpHeaders, <- forwardHeaders
+                    @RequestParam  Map<String,String>           params)      <- queryParamsHeader
 
           Note there is no <to uri="http://..."/> and no ProducerTemplate anywhere:
           the URL, the verb and both payload types are declared on ArtisanClient and
