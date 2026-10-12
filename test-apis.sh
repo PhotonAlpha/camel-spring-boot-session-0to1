@@ -42,6 +42,12 @@ hit "API-6  综合编排：拒绝路径 (filter 拦截履约，仍返回 200 与
 hit "API-7  自定义组件 httpexchange: 调用 @HttpExchange 接口（出入站各一次 ftl 转换）" /accounts \
   '{"orderId":"G-7001","userName":"ethan","channel":"APP","amount":2000}'
 
+hit "API-7b httpexchange:artisanClient/createUser（@RequestBody String，开户）" /accounts/create \
+  '{"orderId":"G-7002","userName":"ethan","channel":"WEB","amount":500}'
+
+hit "API-7c httpexchange:artisanClient/getUser（查回 7b 刚开的账户）" /accounts/detail \
+  '{"orderId":"G-7003","accountId":"ACC-G-7002"}'
+
 # API-8 不在 /api/v1/orders 下，且是 multipart，不走 hit()
 UPLOAD="http://${HOST}/api/v1/files/upload"
 

@@ -42,11 +42,17 @@ import java.util.stream.Collectors;
  * <p>Parameter binding follows the annotations that are on the interface anyway:
  * <table>
  *   <tr><th>Parameter</th><th>Bound from</th></tr>
- *   <tr><td>{@code @RequestBody}</td><td>the rendered request template (or the message body)</td></tr>
+ *   <tr><td>{@code @RequestBody}</td><td>the rendered request template (or the message body);
+ *       verbatim for a {@code String} parameter, parsed for any other type</td></tr>
  *   <tr><td>{@code @RequestHeader} on a Map / MultiValueMap</td><td>Exchange headers</td></tr>
  *   <tr><td>{@code @RequestParam} on a Map</td><td>the Exchange header named by {@code queryParamsHeader}</td></tr>
  *   <tr><td>{@code @PathVariable}</td><td>the Exchange header of the same name</td></tr>
  * </table>
+ *
+ * <p>Headers are better not declared per method at all: the proxy is invoked inside
+ * {@link HttpExchangeContext}, so an {@code HttpRequestValues.Processor} registered on the proxy
+ * factory can read the Exchange and add headers to every method in one place.
+ * {@code @RequestHeader Map} binding remains for the occasional method that needs its own.
  */
 public class HttpExchangeProducer extends DefaultProducer {
 
@@ -106,7 +112,8 @@ public class HttpExchangeProducer extends DefaultProducer {
         // ---- 3. invoke the @HttpExchange proxy -------------------------------------------
         log.info("[httpexchange][{}] invoking {}.{}", endpoint.getMethodName(),
                 endpoint.getBeanName(), method.getName());
-        Object result = method.invoke(client, args);
+        // The Exchange is visible to HttpRequestValues.Processors (header policy) for the duration of the call
+        Object result = HttpExchangeContext.callWith(exchange, () -> method.invoke(client, args));
 
         // Unwrap ResponseEntity so templates and downstream steps see the payload, not the envelope
         if (result instanceof ResponseEntity<?> entity) {
@@ -208,10 +215,17 @@ public class HttpExchangeProducer extends DefaultProducer {
         return args;
     }
 
-    /** The rendered template is text; the interface wants a typed object. */
+    /**
+     * The rendered template is text. A {@code String} parameter takes it verbatim (the JSON string
+     * style); any other type gets it parsed into that type. Without a request template the message
+     * body is used, and is serialised to JSON when the parameter is a String.
+     */
     private Object convertBody(Object payload, Class<?> targetType) throws Exception {
         if (payload == null || targetType.isInstance(payload)) {
             return payload;
+        }
+        if (targetType == String.class) {
+            return objectMapper.writeValueAsString(payload);
         }
         if (payload instanceof String text) {
             return objectMapper.readValue(text, targetType);

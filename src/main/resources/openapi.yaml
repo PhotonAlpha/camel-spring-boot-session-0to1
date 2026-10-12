@@ -17,8 +17,9 @@ info:
   title: camel-session-0to1 API
   version: 1.0.0-SNAPSHOT
   description: |
-    Apache Camel teaching project. Eight business endpoints, each demonstrating
-    one group of EIP tags, plus the two "external systems" that API-3 and API-7
+    Apache Camel teaching project. Eight business APIs (API-7 has three
+    endpoints, one per method of its HTTP interface), each demonstrating one
+    group of EIP tags, plus the mock "external systems" that API-3 and API-7
     call over real HTTP.
 
     Two semantics run through the whole project:
@@ -95,7 +96,7 @@ x-groups:
       - mock externals
 
   # Selected by exclusion rather than by listing: everything except the endpoints
-  # marked x-internal, which here are the two fake "external systems". Survives
+  # marked x-internal, which here are the fake "external systems". Survives
   # adding an API - a new endpoint is public unless it says otherwise.
   - name: public
     displayName: Public API (nothing internal)
@@ -575,10 +576,14 @@ paths:
             &unmarshalTo=java.util.Map
         ```
 
-        The component renders the request template, binds the result to the
-        `@RequestBody` parameter of `ArtisanClient#listUser`, invokes the Spring
+        The component renders the request template and passes the text verbatim
+        to `listUser(@RequestBody String userJson, ...)`, invokes the Spring
         HTTP interface proxy, then renders the reply through the response
         template and parses it back so the REST layer can serialise it.
+
+        No method of `ArtisanClient` declares a header: `X-Client-Id` is set on
+        the interface, `X-Trace-Id` / `X-Channel` are added by `ArtisanHeaders`,
+        and Logbook prints every request and response.
 
         The mock service returns three accounts derived from `amount`:
         `PRIMARY` = amount, `SAVINGS` = amount x 0.3, `CREDIT` = amount x 1.5 -
@@ -611,6 +616,70 @@ paths:
                   - { id: G-7001-PRIMARY, owner: ethan, channel: APP, amount: 2000 }
                   - { id: G-7001-SAVINGS, owner: ethan, channel: APP, amount: 600 }
                   - { id: G-7001-CREDIT,  owner: ethan, channel: APP, amount: 3000 }
+
+  /api/v1/orders/accounts/create:
+    post:
+      tags: [API-7 accounts]
+      summary: "Open an account through httpexchange:artisanClient/createUser"
+      description: |
+        Same request template as `/accounts` (`artisan-request.ftl`), rendered
+        into a JSON string and passed verbatim to
+        `createUser(@RequestBody String userJson)`; the reply goes through
+        `artisan-account-response.ftl`. The account id is `ACC-` + `orderId`.
+      operationId: createAccount
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccountLookupRequest'
+            example:
+              orderId: G-7002
+              userName: ethan
+              channel: WEB
+              amount: 500
+      responses:
+        '200':
+          description: The opened account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountResponse'
+              example:
+                code: OK
+                orderId: G-7002
+                account: { id: ACC-G-7002, owner: ethan, channel: WEB, amount: 500 }
+
+  /api/v1/orders/accounts/detail:
+    post:
+      tags: [API-7 accounts]
+      summary: "Look one account up through httpexchange:artisanClient/getUser"
+      description: |
+        `artisan-detail-request.ftl` renders `{"userId": accountId}` for
+        `getUser(@RequestBody String queryJson)`. Only accounts opened through
+        `/accounts/create` since startup exist; an unknown id makes the remote
+        side answer 404, which fails the exchange with 500.
+      operationId: getAccount
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccountDetailRequest'
+            example:
+              orderId: G-7003
+              accountId: ACC-G-7002
+      responses:
+        '200':
+          description: The account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountResponse'
+              example:
+                code: OK
+                orderId: G-7003
+                account: { id: ACC-G-7002, owner: ethan, channel: WEB, amount: 500 }
 
   # ===========================================================================
   #  API-8  file upload
@@ -742,13 +811,13 @@ paths:
       x-internal: true
       summary: "External artisan service (mock) - the system API-7 calls"
       description: |
-        The target of `ArtisanClient`. Its payload is `MyAccountDetailsVO` itself,
-        which is the shape `artisan-request.ftl` renders.
+        The target of `ArtisanClient#listUser`. Its payload has the
+        `MyAccountDetailsVO` shape, which is what `artisan-request.ftl` renders
+        (the client sends it as a JSON string).
 
-        Headers and query parameters are logged by the mock so you can see what
-        the `httpexchange:` component forwarded: `forwardHeaders` decides which
-        Exchange headers become HTTP headers, and `queryParamsHeader` names the
-        header carrying the `@RequestParam Map`.
+        The mock logs the headers it receives. `X-Client-Id` is declared on the
+        interface; `X-Trace-Id` and `X-Channel` are added to every call by
+        `ArtisanHeaders`, an `HttpRequestValues.Processor` on the proxy factory.
       operationId: mockArtisanList
       parameters:
         - name: scope
@@ -761,16 +830,9 @@ paths:
           required: false
           schema: { type: string }
           example: APP
-        - name: X-Trace-Id
-          in: header
-          required: false
-          schema: { type: string }
-          example: manual-001
-        - name: X-Channel
-          in: header
-          required: false
-          schema: { type: string }
-          example: APP
+        - $ref: '#/components/parameters/XClientId'
+        - $ref: '#/components/parameters/XTraceId'
+        - $ref: '#/components/parameters/XChannel'
       requestBody:
         required: true
         content:
@@ -796,7 +858,95 @@ paths:
                 - { userId: MANUAL-1-SAVINGS, userName: tester, channel: APP, amount: 30 }
                 - { userId: MANUAL-1-CREDIT,  userName: tester, channel: APP, amount: 150 }
 
+
+  /buziVa/artisan/create:
+    post:
+      tags: [mock externals]
+      x-internal: true
+      summary: "External artisan service (mock) - open an account"
+      description: |
+        The target of `ArtisanClient#createUser`. The new account id is
+        `ACC-` + the `userId` sent; accounts are kept in memory for `/detail`.
+      operationId: mockArtisanCreate
+      parameters:
+        - $ref: '#/components/parameters/XClientId'
+        - $ref: '#/components/parameters/XTraceId'
+        - $ref: '#/components/parameters/XChannel'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MyAccountDetailsVO'
+            example:
+              userId: G-7002
+              userName: ethan
+              channel: WEB
+              amount: 500
+      responses:
+        '200':
+          description: The opened account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MyAccountDetailsVO'
+              example: { userId: ACC-G-7002, userName: ethan, channel: WEB, amount: 500 }
+
+  /buziVa/artisan/detail:
+    post:
+      tags: [mock externals]
+      x-internal: true
+      summary: "External artisan service (mock) - one account by id"
+      description: The target of `ArtisanClient#getUser`. Only `userId` is read from the body.
+      operationId: mockArtisanDetail
+      parameters:
+        - $ref: '#/components/parameters/XClientId'
+        - $ref: '#/components/parameters/XTraceId'
+        - $ref: '#/components/parameters/XChannel'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MyAccountDetailsVO'
+            example: { userId: ACC-G-7002 }
+      responses:
+        '200':
+          description: The account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MyAccountDetailsVO'
+              example: { userId: ACC-G-7002, userName: ethan, channel: WEB, amount: 500 }
+        '404':
+          description: No account with that id was opened since startup
 components:
+
+  # Headers every ArtisanClient call carries without any method declaring them:
+  # X-Client-Id from @HttpExchange(headers = ...) on the interface, the other two
+  # from ArtisanHeaders (an HttpRequestValues.Processor on the proxy factory).
+  parameters:
+    XClientId:
+      name: X-Client-Id
+      in: header
+      required: false
+      schema: { type: string }
+      example: camel-session-0to1
+    XTraceId:
+      name: X-Trace-Id
+      in: header
+      required: false
+      description: The Camel exchangeId of the calling route.
+      schema: { type: string }
+      example: manual-001
+    XChannel:
+      name: X-Channel
+      in: header
+      required: false
+      description: The order's channel, WEB when absent.
+      schema: { type: string }
+      example: APP
+
   schemas:
 
     # ---------------------------------------------------------------- API-1
@@ -1070,6 +1220,27 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Account'
+
+    AccountDetailRequest:
+      type: object
+      required: [accountId]
+      properties:
+        orderId:
+          type: string
+          description: Echoed back through an Exchange header.
+          example: G-7003
+        accountId:
+          type: string
+          description: An id returned by /accounts/create.
+          example: ACC-G-7002
+
+    AccountResponse:
+      type: object
+      properties:
+        code: { type: string, example: OK }
+        orderId: { type: string, example: G-7002 }
+        account:
+          $ref: '#/components/schemas/Account'
 
     Account:
       type: object

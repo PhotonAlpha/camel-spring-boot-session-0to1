@@ -72,6 +72,12 @@
             <post path="/accounts" type="java.util.Map" outType="java.util.Map">
                 <to uri="direct:api7-accounts"/>
             </post>
+            <post path="/accounts/create" type="java.util.Map" outType="java.util.Map">
+                <to uri="direct:api7-account-create"/>
+            </post>
+            <post path="/accounts/detail" type="java.util.Map" outType="java.util.Map">
+                <to uri="direct:api7-account-detail"/>
+            </post>
         </rest>
 
         <!--

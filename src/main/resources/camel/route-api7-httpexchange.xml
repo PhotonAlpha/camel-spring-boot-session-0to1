@@ -26,46 +26,73 @@
 
         <!--
           ####################################################################
-          API-7  POST /api/v1/orders/accounts
+          API-7  POST /api/v1/orders/accounts            listUser
+                 POST /api/v1/orders/accounts/create     createUser
+                 POST /api/v1/orders/accounts/detail     getUser
           Tags: <rest> <post> <to> <from> <setHeader> + httpexchange: component
           ####################################################################
-          The whole remote call is one <to>. Its URI reads:
+          Three routes, three methods of the same ArtisanClient interface. Each remote
+          call is one <to>, whose URI reads:
 
             httpexchange:<beanName>/<methodName>
-                ?requestTemplate=...    rendered before the call; the result is bound
-                                        to the @RequestBody parameter
+                ?requestTemplate=...    rendered before the call; the text is passed
+                                        verbatim to the @RequestBody String parameter
                 &responseTemplate=...   rendered after the call, on the unwrapped reply
                 &unmarshalTo=...        parse the rendered text back into an object so
                                         the REST layer can serialise it as JSON
-                &forwardHeaders=...     which Exchange headers become HTTP headers
 
-          What the component does with the interface below:
+          The interface method, e.g.
 
             ResponseEntity<List<MyAccountDetailsVO>> listUser(
-                    @RequestBody   MyAccountDetailsVO           user,        <- artisan-request.ftl
-                    @RequestHeader MultiValueMap<String,String> httpHeaders, <- forwardHeaders
-                    @RequestParam  Map<String,String>           params)      <- queryParamsHeader
+                    @RequestBody  String             userJson,   <- artisan-request.ftl
+                    @RequestParam Map<String,String> params)     <- queryParamsHeader
 
-          Note there is no <to uri="http://..."/> and no ProducerTemplate anywhere:
-          the URL, the verb and both payload types are declared on ArtisanClient and
-          checked by the compiler.
+          Note what the routes do NOT do: set any outbound HTTP header. X-Client-Id is
+          declared once on the interface, X-Trace-Id and X-Channel are added for every
+          method by ArtisanHeaders (an HttpRequestValues.Processor on the proxy factory),
+          and every request and response is printed by Logbook. The orderId / userName
+          headers below are read by the templates, not sent.
+
+          There is no <to uri="http://..."/> and no ProducerTemplate anywhere: the URL,
+          the verb and the reply types are declared on ArtisanClient.
         -->
         <route id="api7-account-lookup">
             <from uri="direct:api7-accounts"/>
-            <log message="[API-7] >>> entering route, payload = ${body}"/>
+            <log message="[API-7] >>> entering route api7-account-lookup, payload = ${body}"/>
 
-            <!-- Headers the component will forward to the remote call -->
+            <!-- Read by the templates -->
             <setHeader name="orderId"><simple>${body[orderId]}</simple></setHeader>
             <setHeader name="userName"><simple>${body[userName]}</simple></setHeader>
-            <setHeader name="X-Trace-Id"><simple>${exchangeId}</simple></setHeader>
-            <setHeader name="X-Channel"><simple>${body[channel]}</simple></setHeader>
 
             <!-- The Map behind the @RequestParam parameter -->
             <setHeader name="HttpExchangeQueryParams">
                 <method ref="artisanQueryParams" method="build"/>
             </setHeader>
 
-            <to uri="httpexchange:artisanClient/listUser?requestTemplate=templates/artisan-request.ftl&amp;responseTemplate=templates/artisan-response.ftl&amp;unmarshalTo=java.util.Map&amp;forwardHeaders=X-Trace-Id,X-Channel"/>
+            <to uri="httpexchange:artisanClient/listUser?requestTemplate=templates/artisan-request.ftl&amp;responseTemplate=templates/artisan-response.ftl&amp;unmarshalTo=java.util.Map"/>
+
+            <log message="[API-7] &lt;&lt;&lt; route finished, reply = ${body}"/>
+        </route>
+
+        <!-- Same request template as the list call: opening an account takes the same fields -->
+        <route id="api7-account-create">
+            <from uri="direct:api7-account-create"/>
+            <log message="[API-7] >>> entering route api7-account-create, payload = ${body}"/>
+            <setHeader name="orderId"><simple>${body[orderId]}</simple></setHeader>
+            <setHeader name="userName"><simple>${body[userName]}</simple></setHeader>
+
+            <to uri="httpexchange:artisanClient/createUser?requestTemplate=templates/artisan-request.ftl&amp;responseTemplate=templates/artisan-account-response.ftl&amp;unmarshalTo=java.util.Map"/>
+
+            <log message="[API-7] &lt;&lt;&lt; route finished, reply = ${body}"/>
+        </route>
+
+        <!-- An unknown accountId makes the remote side answer 404, which fails the exchange (500) -->
+        <route id="api7-account-detail">
+            <from uri="direct:api7-account-detail"/>
+            <log message="[API-7] >>> entering route api7-account-detail, payload = ${body}"/>
+            <setHeader name="orderId"><simple>${body[orderId]}</simple></setHeader>
+
+            <to uri="httpexchange:artisanClient/getUser?requestTemplate=templates/artisan-detail-request.ftl&amp;responseTemplate=templates/artisan-account-response.ftl&amp;unmarshalTo=java.util.Map"/>
 
             <log message="[API-7] &lt;&lt;&lt; route finished, reply = ${body}"/>
         </route>

@@ -99,12 +99,38 @@ management:
         include: health,info,metrics
 
 
+# ==== Logbook: every remote call's request and response =======================
+# Two HTTP clients make the remote calls, and Logbook is hooked into both:
+#   API-7  RestClient behind ArtisanClient   -> LogbookClientHttpRequestInterceptor (HttpServiceClientConfig)
+#   API-3  camel-http (Apache HttpClient 5)  -> LogbookHttpExecHandler (LogbookHttpClientConfig, wired below)
+logbook:
+  # The starter also registers a servlet filter that logs INBOUND requests. Only outbound calls are
+  # wanted here - with the filter on, the mock "external systems" would be logged a second time.
+  filter:
+    enabled: false
+  format:
+    # Plain HTTP messages (request line, headers, body); "json" gives one line per message instead
+    style: http
+  obfuscate:
+    headers: [Authorization, X-Client-Secret]
+  write:
+    max-body-size: 4096
+
+camel:
+  component:
+    http:
+      # A component customizer, not a camel.springboot.* switch, so it applies to the XML-defined
+      # CamelContext as well. "#name" is a bean reference.
+      http-client-configurer: "#logbookHttpClientConfigurer"
+
 logging:
   pattern:
     console: "%d{HH:mm:ss.SSS} %highlight(%-5level) [%15.15thread] [camel-app,%X{trace_id:-},%X{span_id:-}] [route:%X{camel.routeId:-~}] %cyan(%-40.40logger{39}) : %msg%n"
   level:
     root: INFO
     com.example.camel: INFO
+    # Logbook writes at TRACE; this is the switch for the request/response log
+    org.zalando.logbook.Logbook: TRACE
     org.apache.camel: INFO
     # Uncomment to watch spans being opened/closed by the Camel <-> Micrometer bridge
     # org.apache.camel.observation: DEBUG

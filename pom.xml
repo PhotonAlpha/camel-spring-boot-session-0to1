@@ -26,6 +26,8 @@
         <!-- 4.21 起 camel-spring-boot 以 Boot 4.1 构建（4.22.1 对应 Boot 4.1.1）；4.19/4.20 对应 Boot 4.0 -->
         <camel.version>4.22.1</camel.version>
         <springdoc.version>3.1.1</springdoc.version>
+        <!-- 4.2.0 is built against Spring Boot 4.1.1 / Spring Framework 7.0.9, the same pair as this project -->
+        <logbook.version>4.2.0</logbook.version>
     </properties>
 
     <dependencyManagement>
@@ -120,6 +122,21 @@
             <groupId>org.springdoc</groupId>
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
             <version>${springdoc.version}</version>
+        </dependency>
+
+        <!-- ==================== Logbook：打印每个远程调用的 request / response ==================== -->
+        <!-- Starter 带来 Logbook 本体与自动装配（Logbook Bean、RestClient 用的 LogbookClientHttpRequestInterceptor）。
+             它默认还会注册一个 Servlet Filter 记录入站请求，本项目只关心出站调用，在 application.yml 里关掉了 -->
+        <dependency>
+            <groupId>org.zalando</groupId>
+            <artifactId>logbook-spring-boot-starter</artifactId>
+            <version>${logbook.version}</version>
+        </dependency>
+        <!-- Apache HttpClient 5 的拦截器：API-3 的 Camel http:// 组件底层就是 HttpClient 5 -->
+        <dependency>
+            <groupId>org.zalando</groupId>
+            <artifactId>logbook-httpclient5</artifactId>
+            <version>${logbook.version}</version>
         </dependency>
 
         <!-- ==================== 链路追踪（traceId 打进日志） ==================== -->
